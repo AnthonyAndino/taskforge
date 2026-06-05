@@ -24,3 +24,14 @@ describe('GET /api/ping', ()=> {
         })
     })
 })
+
+describe('GET /prueba', () => {
+    it('responde con not found y { "error": { "code": "NOT_FOUND", "message": "..." } }', async () => {
+        const response = await supertest(app).get('/prueba')
+
+        expect(response.status).toBe(404)
+        expect(response.body).toHaveProperty('error')
+        expect(response.body.error).toHaveProperty('code', 'NOT_FOUND')
+        expect(response.body.error).toHaveProperty('message')
+    })
+})

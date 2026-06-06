@@ -1,0 +1,49 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; background: #0f1117; color: #e1e4e8; }
+
+.login { max-width: 360px; margin: 80px auto; text-align: center; }
+.login h1 { font-size: 2rem; margin-bottom: 24px; color: #58a6ff; }
+.login form { display: flex; flex-direction: column; gap: 12px; }
+.login input { padding: 10px 14px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e1e4e8; font-size: 14px; }
+.login button { padding: 10px; border-radius: 6px; border: none; background: #238636; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+.login button:hover { background: #2ea043; }
+.login .link { background: none; color: #58a6ff; font-weight: normal; }
+.login .link:hover { text-decoration: underline; }
+.login .error { color: #f85149; font-size: 13px; }
+
+header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid #30363d; }
+header h1 { font-size: 1.4rem; color: #58a6ff; }
+header button { padding: 6px 14px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #e1e4e8; cursor: pointer; font-size: 13px; }
+header button:hover { background: #30363d; }
+
+.controls { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+.controls input { padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e1e4e8; flex: 1; min-width: 200px; font-size: 13px; }
+.controls .list-input { max-width: 400px; }
+.search-form { display: flex; gap: 8px; flex: 1; }
+.search-form button, .controls button { padding: 8px 14px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #e1e4e8; cursor: pointer; font-size: 13px; }
+.search-form button:hover, .controls button:hover { background: #30363d; }
+
+.create-form { display: flex; gap: 8px; padding: 0 24px 16px; flex-wrap: wrap; }
+.create-form input { padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e1e4e8; flex: 1; min-width: 200px; font-size: 13px; }
+.create-form select { padding: 8px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e1e4e8; font-size: 13px; }
+.create-form button { padding: 8px 14px; border-radius: 6px; border: none; background: #238636; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.create-form button:hover { background: #2ea043; }
+
+.card-list { display: flex; flex-direction: column; gap: 8px; padding: 0 24px 24px; }
+.card { padding: 14px 16px; border-radius: 8px; border: 1px solid #30363d; background: #161b22; transition: border-color 0.2s; border-left: 4px solid #8b949e; }
+.card.priority-low { border-left-color: #58a6ff; }
+.card.priority-medium { border-left-color: #d29922; }
+.card.priority-high { border-left-color: #f85149; }
+.card.priority-urgent { border-left-color: #bc8cff; }
+.card-header { display: flex; align-items: center; gap: 8px; }
+.card-header strong { flex: 1; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; text-transform: uppercase; }
+.badge.low { background: #1f3a5f; color: #58a6ff; }
+.badge.medium { background: #3d2e00; color: #d29922; }
+.badge.high { background: #3d1414; color: #f85149; }
+.badge.urgent { background: #2a1f3d; color: #bc8cff; }
+.delete-btn { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 18px; padding: 0 4px; }
+.delete-btn:hover { color: #f85149; }
+.card p { margin: 6px 0 0; font-size: 13px; color: #8b949e; }
+.card small { display: block; margin-top: 6px; font-size: 11px; color: #484f58; }
+.empty { text-align: center; padding: 40px; color: #484f58; }

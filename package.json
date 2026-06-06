@@ -1,8 +1,7 @@
 {
-  "name": "learning",
+  "name": "taskforge",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Kanban-style project management platform with real-time collaboration, REST API, CLI client, and React dashboard",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
@@ -12,9 +11,9 @@
     "cli": "tsx cli/index.ts",
     "dashboard": "npm run dev & cd dashboard && npm run dev"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["taskforge", "kanban", "project-management", "express", "typescript", "react", "websocket"],
+  "author": "Anthony Andino",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",

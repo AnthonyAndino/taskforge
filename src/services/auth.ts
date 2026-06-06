@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import { createUser, findByEmail } from '../repositories/userStore.js'
+import { createUser, findByEmail } from '../repositories/userRepository.js'
 import { AppError } from '../errors/AppError.js'
 
 
@@ -11,23 +11,23 @@ export function generateTokens(userId: string) {
     return { accessToken, refreshToken }
 }
 
-export function registerUser(email: string, password: string, name: string) {
-    const existing = findByEmail(email)
+export async function registerUser(email: string, password: string, name: string) {
+    const existing = await findByEmail(email)
 
     if (existing) {
         throw new AppError(409, 'CONFLICT', 'Email alredy registered')
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10)
-    const user = createUser(email, hashedPassword, name)
+    const user = await createUser(email, hashedPassword, name)
     const token = generateTokens(user.id)
 
     return { ...token, user }
 
 }
 
-export function loginUser(email: string, password: string) {
-    const user = findByEmail(email)
+export async function loginUser(email: string, password: string) {
+    const user = await findByEmail(email)
 
     if (!user) {
         throw new AppError(401, 'UNAUTHORIZED', 'Invalid email or password')

@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import supertest from 'supertest'
 import { app } from '../src/app.js'
+import { pool } from '../src/db/pool.js'
+
+beforeAll(async () => {
+    await pool.query('TRUNCATE TABLE users CASCADE')
+})
 
 describe('POST /auth/register', () => {
     it('registra un usuario y devuelve token + user', async () => {

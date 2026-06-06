@@ -54,6 +54,20 @@ export async function createCard(listId: string, title: string, description: str
     return res.json()
 }
 
+export async function updateCard(
+    cardId: string,
+    fields: { title?: string; description?: string; priority?: string },
+    expectedVersion: number
+) {
+    const res = await fetch(`${API}/api/cards/${cardId}`, {
+        method: 'PATCH',
+        headers: headers(),
+        body: JSON.stringify({ ...fields, expectedVersion }),
+    })
+    if (!res.ok) throw new Error('Update failed')
+    return res.json()
+}
+
 export async function deleteCard(cardId: string) {
     const res = await fetch(`${API}/api/cards/${cardId}`, {
         method: 'DELETE',
@@ -63,3 +77,5 @@ export async function deleteCard(cardId: string) {
 }
 
 export function getToken() { return token }
+
+export function logout() { token = null }

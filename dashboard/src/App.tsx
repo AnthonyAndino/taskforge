@@ -530,7 +530,7 @@ function Dashboard({ onLogout, theme, toggleTheme }: {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Card[] | null>(null)
   const [wsConnected, setWsConnected] = useState(false)
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const searchTimeoutRef = useRef<any>(null)
 
   /* Save columns to localStorage */
   useEffect(() => { saveColumns(columns) }, [columns])

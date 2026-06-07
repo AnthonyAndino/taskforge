@@ -10,6 +10,7 @@ import labelRouter from './routes/label.js'
 import workspaceRouter from './routes/workspace.js'
 import boardRouter from './routes/board.js'
 import listRouter from './routes/list.js'
+import activityRouter from './routes/activity.js'
 
 export const app = express()
 
@@ -23,6 +24,7 @@ app.use('/api', labelRouter)
 app.use('/api', workspaceRouter)
 app.use('/api', boardRouter)
 app.use('/api', listRouter)
+app.use('/api', activityRouter)
 app.use(notFound)
 app.use(errorHandler)
 

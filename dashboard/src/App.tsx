@@ -4,7 +4,7 @@ import {
   getWorkspaces, createWorkspace,
   getBoards, createBoard,
   getLists, createList, updateList, deleteList,
-  getCards, searchCards, createCard, updateCard, deleteCard,
+  getCards, searchCards, createCard, updateCard, deleteCard, moveCard, getActivity
 } from './api'
 import mascotImg from './assets/manatee_mascot.png'
 import './App.css'
@@ -13,7 +13,7 @@ import './App.css'
 interface Workspace { id: string; name: string; slug: string }
 interface Board { id: string; workspaceId: string; name: string }
 interface BoardList { id: string; boardId: string; name: string; position: number }
-interface Card { id: string; listId: string; title: string; description: string; position: number; priority: string; version: number }
+interface Card { id: string; listId: string; title: string; description: string; position: number; priority: string; version: number; dueDate?: string | null }
 
 type AppView = 'landing' | 'auth' | 'dashboard'
 const THEME_KEY = 'taskforge_theme'
@@ -38,6 +38,7 @@ const Ico = {
   ChevronDown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>,
   ChevronRight: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
   Check: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  Bell: () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>,
 }
 
 /* ===== Priority Select Component (custom styled like the design image) ===== */
@@ -140,13 +141,14 @@ function CardEditModal({ card, onSave, onClose }: { card: Card; onSave: (c: Card
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description)
   const [priority, setPriority] = useState(card.priority)
+  const [dueDate, setDueDate] = useState<string | null>(card.dueDate ?? null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   async function handleSave() {
     if (!title.trim()) return
     setLoading(true); setError('')
-    try { const updated = await updateCard(card.id, { title, description, priority }, card.version); onSave(updated) }
+    try { const updated = await updateCard(card.id, { title, description, priority, dueDate }, card.version); onSave(updated) }
     catch (e: any) { setError(e.message) }
     finally { setLoading(false) }
   }
@@ -171,6 +173,10 @@ function CardEditModal({ card, onSave, onClose }: { card: Card; onSave: (c: Card
       <div className="form-group">
         <label className="label">Priority</label>
         <PrioritySelect id="edit-priority" value={priority} onChange={setPriority} />
+      </div>
+      <div className="form-group">
+        <label className="label">Due Date</label>
+        <input type="date" id="edit-due-date" className="input" value={dueDate ? dueDate.substring(0, 10) : ''} onChange={e => setDueDate(e.target.value || null)} />
       </div>
       {error && <div className="auth-error">{error}</div>}
     </Modal>
@@ -282,20 +288,55 @@ function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: (w: Workspace
   )
 }
 
+function formatDueDate(dateStr: string) {
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[d.getMonth()]} ${d.getDate()}`
+}
+
+const ClockIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+)
+
 /* ===== Task Card ===== */
 function TaskCard({ card, onEdit, onDelete }: { card: Card; onEdit: () => void; onDelete: () => void }) {
   const prio = PRIORITIES.find(p => p.value === card.priority)
+  const [isDragging, setIsDragging] = useState(false)
   return (
-    <div className="task-card" onDoubleClick={onEdit}>
+    <div
+      className={`task-card ${isDragging ? 'dragging' : ''}`}
+      onDoubleClick={onEdit}
+      draggable
+      onDragStart={(e) => {
+        setIsDragging(true)
+        e.dataTransfer.setData('application/json', JSON.stringify({ id: card.id, version: card.version, listId: card.listId }))
+        e.dataTransfer.effectAllowed = 'move'
+      }}
+      onDragEnd={() => {
+        setIsDragging(false)
+      }}
+    >
       <div className="task-card-priority-bar" style={{ background: prio?.color ?? '#E5A54B' }} />
       <div className="task-card-body">
         <div className="task-card-title">{card.title}</div>
         {card.description && <div className="task-card-desc">{card.description}</div>}
         <div className="task-card-footer">
-          <span className={`priority-badge ${card.priority}`} style={{ borderColor: prio?.color, color: prio?.color }}>
-            <span className="prio-dot-sm" style={{ background: prio?.color }} />
-            {card.priority}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span className={`priority-badge ${card.priority}`} style={{ borderColor: prio?.color, color: prio?.color }}>
+              <span className="prio-dot-sm" style={{ background: prio?.color }} />
+              {card.priority}
+            </span>
+            {card.dueDate && (
+              <span className={`due-date-badge ${new Date(card.dueDate).getTime() < Date.now() ? 'overdue' : (new Date(card.dueDate).getTime() - Date.now() < 48*60*60*1000) ? 'due-soon' : ''}`} title="Due date">
+                <ClockIcon />
+                {formatDueDate(card.dueDate)}
+              </span>
+            )}
+          </div>
           <div className="task-card-actions">
             <button id={`edit-card-${card.id.slice(0, 8)}`} onClick={e => { e.stopPropagation(); onEdit() }} title="Edit card"><Ico.Edit /></button>
             <button id={`del-card-${card.id.slice(0, 8)}`} className="delete-action" onClick={e => { e.stopPropagation(); onDelete() }} title="Delete card"><Ico.Trash /></button>
@@ -307,7 +348,13 @@ function TaskCard({ card, onEdit, onDelete }: { card: Card; onEdit: () => void; 
 }
 
 /* ===== Kanban Column ===== */
-function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList; colorIdx: number; onDeleted: () => void; wsEvent: any }) {
+function KanbanColumn({ list, colorIdx, onDeleted, wsEvent, onCardsChange }: {
+  list: BoardList
+  colorIdx: number
+  onDeleted: () => void
+  wsEvent: any
+  onCardsChange: (columnId: string, cards: Card[]) => void
+}) {
   const [cards, setCards] = useState<Card[]>([])
   const [addingCard, setAddingCard] = useState(false)
   const [newTitle, setNewTitle] = useState('')
@@ -316,6 +363,7 @@ function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList;
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameVal, setRenameVal] = useState(list.name)
   const [loading, setLoading] = useState(true)
+  const [isDragOver, setIsDragOver] = useState(false)
   const color = COLUMN_COLORS[colorIdx % COLUMN_COLORS.length]!
 
   const loadCards = useCallback(async () => {
@@ -327,6 +375,25 @@ function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList;
 
   useEffect(() => { loadCards() }, [loadCards])
 
+  // Notify parent of cards updates for stats
+  useEffect(() => {
+    onCardsChange(list.id, cards)
+  }, [cards, list.id, onCardsChange])
+
+  // Listen to local drag and drop movements
+  useEffect(() => {
+    function handleLocalMove(e: Event) {
+      const { card, sourceListId } = (e as CustomEvent).detail
+      if (card.listId === list.id) {
+        setCards(prev => prev.some(c => c.id === card.id) ? prev : [...prev, card].sort((a, b) => a.position - b.position))
+      } else if (sourceListId === list.id) {
+        setCards(prev => prev.filter(c => c.id !== card.id))
+      }
+    }
+    window.addEventListener('card-moved-local', handleLocalMove)
+    return () => window.removeEventListener('card-moved-local', handleLocalMove)
+  }, [list.id])
+
   // React to real-time websocket events
   useEffect(() => {
     if (!wsEvent) return
@@ -336,6 +403,20 @@ function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList;
       setCards(prev => prev.map(c => c.id === wsEvent.payload.id ? wsEvent.payload : c))
     } else if (wsEvent.type === 'card.deleted') {
       setCards(prev => prev.filter(c => c.id !== wsEvent.payload.id))
+    } else if (wsEvent.type === 'card.moved') {
+      const card = wsEvent.payload
+      if (card.listId === list.id) {
+        setCards(prev => {
+          const exists = prev.some(c => c.id === card.id)
+          if (exists) {
+            return prev.map(c => c.id === card.id ? card : c).sort((a, b) => a.position - b.position)
+          } else {
+            return [...prev, card].sort((a, b) => a.position - b.position)
+          }
+        })
+      } else {
+        setCards(prev => prev.filter(c => c.id !== card.id))
+      }
     }
   }, [wsEvent, list.id])
 
@@ -365,7 +446,35 @@ function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList;
 
   return (
     <>
-      <div className="kanban-col">
+      <div
+        className={`kanban-col ${isDragOver ? 'drag-over' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault()
+          setIsDragOver(true)
+        }}
+        onDragLeave={() => {
+          setIsDragOver(false)
+        }}
+        onDrop={async (e) => {
+          e.preventDefault()
+          setIsDragOver(false)
+          try {
+            const dataStr = e.dataTransfer.getData('application/json')
+            if (!dataStr) return
+            const { id: cardId, version, listId: sourceListId } = JSON.parse(dataStr)
+            if (sourceListId === list.id) return
+            
+            const updatedCard = await moveCard(cardId, list.id, version)
+            window.dispatchEvent(new CustomEvent('card-moved-local', { detail: { card: updatedCard, sourceListId } }))
+          } catch (err) {
+            console.error('Failed to move card:', err)
+          }
+        }}
+      >
         <div className="col-header">
           <div className="col-color-dot" style={{ background: color }} />
           {isRenaming ? (
@@ -489,6 +598,66 @@ function Sidebar({ workspaces, boards, activeWorkspaceId, activeBoardId, onSelec
   )
 }
 
+/* ===== Activity Item ===== */
+function ActivityItem({ activity }: { activity: any }) {
+  const getActionText = () => {
+    const actor = <strong>{activity.actorName}</strong>
+    const title = activity.metadata?.title || 'a card'
+    
+    switch (activity.action) {
+      case 'card.created':
+        return <>{actor} created card <strong>"{title}"</strong></>
+      case 'card.updated':
+        return <>{actor} updated card <strong>"{title}"</strong></>
+      case 'card.deleted':
+        return <>{actor} deleted card</>
+      case 'card.moved':
+        return <>{actor} moved card <strong>"{title}"</strong></>
+      default:
+        return <>{actor} performed {activity.action} on {activity.entityType}</>
+    }
+  }
+
+  const getActionClass = () => {
+    if (activity.action.includes('created')) return 'created'
+    if (activity.action.includes('updated')) return 'updated'
+    if (activity.action.includes('moved')) return 'moved'
+    if (activity.action.includes('deleted')) return 'deleted'
+    return ''
+  }
+
+  const getActionEmoji = () => {
+    if (activity.action.includes('created')) return '➕'
+    if (activity.action.includes('updated')) return '📝'
+    if (activity.action.includes('moved')) return '📦'
+    if (activity.action.includes('deleted')) return '🗑️'
+    return '🔔'
+  }
+
+  const timeAgo = (dateStr: string) => {
+    const d = new Date(dateStr)
+    const diffMs = Date.now() - d.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div className="activity-item">
+      <div className={`activity-icon ${getActionClass()}`}>
+        {getActionEmoji()}
+      </div>
+      <div className="activity-info">
+        <div className="activity-action">{getActionText()}</div>
+        <div className="activity-time">{timeAgo(activity.createdAt)}</div>
+      </div>
+    </div>
+  )
+}
+
 /* ===== Dashboard ===== */
 function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; theme: string; toggleTheme: () => void }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
@@ -506,6 +675,15 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
   const [showCreateList, setShowCreateList] = useState(false)
   const [loadingLists, setLoadingLists] = useState(false)
   const searchTimeoutRef = useRef<any>(null)
+
+  // Activity feed states
+  const [showActivity, setShowActivity] = useState(false)
+  const [hasNewActivity, setHasNewActivity] = useState(false)
+  const [activities, setActivities] = useState<any[]>([])
+  const [loadingActivity, setLoadingActivity] = useState(false)
+
+  // Card count tracking state for statistics toolbar
+  const [boardCards, setBoardCards] = useState<Record<string, Card[]>>({})
 
   // Load workspaces + their boards on mount
   useEffect(() => {
@@ -527,10 +705,11 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
     init()
   }, [])
 
-  // Load lists when board changes
+  // Load lists and clear card cache when board changes
   useEffect(() => {
-    if (!activeBoardId) { setLists([]); return }
+    if (!activeBoardId) { setLists([]); setBoardCards({}); return }
     setLoadingLists(true)
+    setBoardCards({})
     getLists(activeBoardId).then(l => setLists(l)).catch(() => setLists([])).finally(() => setLoadingLists(false))
   }, [activeBoardId])
 
@@ -549,6 +728,29 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
     connect()
     return () => { clearTimeout(reconnectTimer); ws?.close() }
   }, [])
+
+  // Listen to WebSocket events to set activity notification dot
+  useEffect(() => {
+    if (!wsEvent) return
+    if (['card.created', 'card.updated', 'card.deleted', 'card.moved'].includes(wsEvent.type)) {
+      setHasNewActivity(true)
+    }
+  }, [wsEvent])
+
+  // Load activities when panel is opened
+  useEffect(() => {
+    if (showActivity) {
+      setLoadingActivity(true)
+      getActivity().then(data => {
+        setActivities(data)
+        setHasNewActivity(false)
+      }).catch(err => {
+        console.error('Failed to load activity:', err)
+      }).finally(() => {
+        setLoadingActivity(false)
+      })
+    }
+  }, [showActivity])
 
   async function handleSelectWorkspace(id: string) {
     setActiveWorkspaceId(id)
@@ -576,6 +778,14 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
 
   const activeBoard = boards.find(b => b.id === activeBoardId)
   const activeWsBoards = boards.filter(b => b.workspaceId === activeWorkspaceId)
+
+  // Compute card count stats
+  const allCards = Object.values(boardCards).flat()
+  const totalCardsCount = allCards.length
+  const lowCount = allCards.filter(c => c.priority === 'low').length
+  const mediumCount = allCards.filter(c => c.priority === 'medium').length
+  const highCount = allCards.filter(c => c.priority === 'high').length
+  const urgentCount = allCards.filter(c => c.priority === 'urgent').length
 
   return (
     <div className="app-layout">
@@ -618,6 +828,10 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
               <div className={`ws-dot ${wsConnected ? 'connected' : ''}`} />
               <span>{wsConnected ? 'Live' : 'Offline'}</span>
             </div>
+            <button className="theme-toggle activity-btn" onClick={() => setShowActivity(true)} aria-label="View activity log">
+              <Ico.Bell />
+              {hasNewActivity && <span className="activity-dot" />}
+            </button>
             <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
               {theme === 'dark' ? <Ico.Sun /> : <Ico.Moon />}
             </button>
@@ -668,7 +882,34 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
           ) : (
             <>
               <div className="kanban-toolbar">
-                <h2>{activeBoard?.name ?? 'Board'}</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                  <h2>{activeBoard?.name ?? 'Board'}</h2>
+                  {totalCardsCount > 0 && (
+                    <div className="card-stats">
+                      <span className="card-stat">{totalCardsCount} cards</span>
+                      {lowCount > 0 && (
+                        <span className="card-stat">
+                          <span className="prio-dot" style={{ background: '#4CAF7D' }} /> {lowCount} Low
+                        </span>
+                      )}
+                      {mediumCount > 0 && (
+                        <span className="card-stat">
+                          <span className="prio-dot" style={{ background: '#E5A54B' }} /> {mediumCount} Med
+                        </span>
+                      )}
+                      {highCount > 0 && (
+                        <span className="card-stat">
+                          <span className="prio-dot" style={{ background: '#E8735A' }} /> {highCount} High
+                        </span>
+                      )}
+                      {urgentCount > 0 && (
+                        <span className="card-stat">
+                          <span className="prio-dot" style={{ background: '#DC4F45' }} /> {urgentCount} Urg
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <button id="add-column-btn" className="btn btn-primary btn-sm" onClick={() => setShowCreateList(true)}>
                   <Ico.Plus /> Add Column
                 </button>
@@ -691,6 +932,9 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
                       colorIdx={idx}
                       wsEvent={wsEvent}
                       onDeleted={() => setLists(prev => prev.filter(l => l.id !== list.id))}
+                      onCardsChange={(columnId, colCards) => {
+                        setBoardCards(prev => ({ ...prev, [columnId]: colCards }))
+                      }}
                     />
                   ))}
                   <div className="add-col-card" onClick={() => setShowCreateList(true)}>
@@ -702,6 +946,34 @@ function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; the
           )}
         </div>
       </div>
+
+      {/* Activity Panel */}
+      {showActivity && (
+        <>
+          <div className="activity-overlay" onClick={() => setShowActivity(false)} />
+          <aside className="activity-panel">
+            <div className="activity-panel-header">
+              <h3><Ico.Bell /> Recent Activity</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowActivity(false)}><Ico.X /> Close</button>
+            </div>
+            <div className="activity-panel-body">
+              {loadingActivity ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '24px' }}>
+                  <div className="spinner" />
+                </div>
+              ) : activities.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                  No recent activities.
+                </div>
+              ) : (
+                activities.map(act => (
+                  <ActivityItem key={act.id} activity={act} />
+                ))
+              )}
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* Modals */}
       {showCreateWs && (

@@ -77,7 +77,7 @@ export async function searchCards(query: string) {
 export async function createCard(listId: string, title: string, description: string, priority: string) {
     return request<any>(`/api/lists/${listId}/cards`, { method: 'POST', body: JSON.stringify({ title, description, priority }) })
 }
-export async function updateCard(cardId: string, fields: { title?: string; description?: string; priority?: string }, expectedVersion: number) {
+export async function updateCard(cardId: string, fields: { title?: string; description?: string; priority?: string; dueDate?: string | null }, expectedVersion: number) {
     return request<any>(`/api/cards/${cardId}`, { method: 'PATCH', body: JSON.stringify({ ...fields, expectedVersion }) })
 }
 export async function moveCard(cardId: string, targetListId: string, expectedVersion: number) {
@@ -93,4 +93,9 @@ export async function getLabels() {
 }
 export async function createLabel(name: string, color: string) {
     return request<any>('/api/labels', { method: 'POST', body: JSON.stringify({ name, color }) })
+}
+
+// ===== Activity Feed =====
+export async function getActivity(limit = 30) {
+    return request<any[]>(`/api/activity?limit=${limit}`)
 }

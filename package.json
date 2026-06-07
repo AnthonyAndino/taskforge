@@ -9,7 +9,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "cli": "tsx cli/index.ts",
-    "dashboard": "npm run dev & cd dashboard && npm run dev"
+    "dashboard": "npm run dev & cd dashboard && npm run dev",
+    "db:seed": "tsx seed.ts"
   },
   "keywords": ["taskforge", "kanban", "project-management", "express", "typescript", "react", "websocket"],
   "author": "Anthony Andino",

@@ -61,16 +61,23 @@ npm install
 cp .env.example .env
 # Fill in DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
+# Seed the database with demo Kanban data
+npm run db:seed
+
 # Start development server
 npm run dev
 
 # Run tests
-npm test
 npm run test:run
 
 # Start dashboard (separate terminal)
 cd dashboard && npm install && npm run dev
 ```
+
+#### Demo Credentials
+After seeding, you can log into the dashboard using:
+- **Email:** `demo@taskforge.com`
+- **Password:** `password123`
 
 ### API Endpoints
 
@@ -138,16 +145,23 @@ npm install
 cp .env.example .env
 # Completar DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
+# Sembrar la base de datos con datos de prueba
+npm run db:seed
+
 # Iniciar servidor de desarrollo
 npm run dev
 
 # Ejecutar pruebas
-npm test
 npm run test:run
 
 # Iniciar dashboard (terminal separada)
 cd dashboard && npm install && npm run dev
 ```
+
+#### Credenciales de Prueba
+Tras sembrar la base de datos, puedes iniciar sesión en el dashboard usando:
+- **Correo:** `demo@taskforge.com`
+- **Contraseña:** `password123`
 
 ---
 

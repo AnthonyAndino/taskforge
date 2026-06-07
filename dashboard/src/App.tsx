@@ -32,8 +32,13 @@ const COLUMN_COLORS = ['#2D9F93', '#E8735A', '#7C5CFC', '#4CAF7D', '#E5A54B', '#
 function loadColumns(): BoardColumn[] {
   try {
     const saved = localStorage.getItem(COLUMNS_KEY)
-    return saved ? JSON.parse(saved) : []
-  } catch { return [] }
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return [
+    { listId: '00000000-0000-4000-a000-000000000004', name: 'To Do 🦦', color: '#2D9F93' },
+    { listId: '00000000-0000-4000-a000-000000000005', name: 'In Progress ⚙️', color: '#E8735A' },
+    { listId: '00000000-0000-4000-a000-000000000006', name: 'Done 🎉', color: '#7C5CFC' }
+  ]
 }
 function saveColumns(cols: BoardColumn[]) {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(cols))

@@ -30,15 +30,21 @@ const THEME_KEY = 'taskforge_theme'
 const COLUMN_COLORS = ['#2D9F93', '#E8735A', '#7C5CFC', '#4CAF7D', '#E5A54B', '#DC4F45']
 
 function loadColumns(): BoardColumn[] {
-  try {
-    const saved = localStorage.getItem(COLUMNS_KEY)
-    if (saved) return JSON.parse(saved)
-  } catch {}
-  return [
+  const defaults = [
     { listId: '00000000-0000-4000-a000-000000000004', name: 'To Do 🦦', color: '#2D9F93' },
     { listId: '00000000-0000-4000-a000-000000000005', name: 'In Progress ⚙️', color: '#E8735A' },
     { listId: '00000000-0000-4000-a000-000000000006', name: 'Done 🎉', color: '#7C5CFC' }
   ]
+  try {
+    const saved = localStorage.getItem(COLUMNS_KEY)
+    if (saved) {
+      const parsed: BoardColumn[] = JSON.parse(saved)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      const allValid = parsed.length > 0 && parsed.every(col => col.listId && uuidRegex.test(col.listId))
+      if (allValid) return parsed
+    }
+  } catch {}
+  return defaults
 }
 function saveColumns(cols: BoardColumn[]) {
   localStorage.setItem(COLUMNS_KEY, JSON.stringify(cols))

@@ -7,6 +7,9 @@ import pingRouter from './routes/ping.js'
 import authRouter from './routes/auth.js'
 import cardRouter from './routes/card.js'
 import labelRouter from './routes/label.js'
+import workspaceRouter from './routes/workspace.js'
+import boardRouter from './routes/board.js'
+import listRouter from './routes/list.js'
 
 export const app = express()
 
@@ -17,6 +20,9 @@ app.use('/api/ping', pingRouter)
 app.use('/auth', authRouter)
 app.use('/api', cardRouter)
 app.use('/api', labelRouter)
+app.use('/api', workspaceRouter)
+app.use('/api', boardRouter)
+app.use('/api', listRouter)
 app.use(notFound)
 app.use(errorHandler)
 

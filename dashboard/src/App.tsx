@@ -1,302 +1,142 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import {
-  login, register, getCards, searchCards, createCard,
-  updateCard, deleteCard, getToken, logout as apiLogout
+  login, register, getToken, logout as apiLogout,
+  getWorkspaces, createWorkspace,
+  getBoards, createBoard,
+  getLists, createList, updateList, deleteList,
+  getCards, searchCards, createCard, updateCard, deleteCard,
 } from './api'
 import mascotImg from './assets/manatee_mascot.png'
 import './App.css'
 
-/* ========== Types ========== */
-interface Card {
-  id: string
-  listId: string
-  title: string
-  description: string
-  position: number
-  priority: string
-  version: number
-}
-
-interface BoardColumn {
-  listId: string
-  name: string
-  color: string
-}
+/* ===== Types ===== */
+interface Workspace { id: string; name: string; slug: string }
+interface Board { id: string; workspaceId: string; name: string }
+interface BoardList { id: string; boardId: string; name: string; position: number }
+interface Card { id: string; listId: string; title: string; description: string; position: number; priority: string; version: number }
 
 type AppView = 'landing' | 'auth' | 'dashboard'
-
-const COLUMNS_KEY = 'taskforge_columns'
 const THEME_KEY = 'taskforge_theme'
 const COLUMN_COLORS = ['#2D9F93', '#E8735A', '#7C5CFC', '#4CAF7D', '#E5A54B', '#DC4F45']
 
-function loadColumns(): BoardColumn[] {
-  const defaults = [
-    { listId: '00000000-0000-4000-a000-000000000004', name: 'To Do 🦦', color: '#2D9F93' },
-    { listId: '00000000-0000-4000-a000-000000000005', name: 'In Progress ⚙️', color: '#E8735A' },
-    { listId: '00000000-0000-4000-a000-000000000006', name: 'Done 🎉', color: '#7C5CFC' }
-  ]
-  try {
-    const saved = localStorage.getItem(COLUMNS_KEY)
-    if (saved) {
-      const parsed: BoardColumn[] = JSON.parse(saved)
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      const allValid = parsed.length > 0 && parsed.every(col => col.listId && uuidRegex.test(col.listId))
-      if (allValid) return parsed
-    }
-  } catch {}
-  return defaults
-}
-function saveColumns(cols: BoardColumn[]) {
-  localStorage.setItem(COLUMNS_KEY, JSON.stringify(cols))
-}
-
-/* ========== SVG Icons ========== */
-function IconForge() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-    </svg>
-  )
-}
-function IconSearch() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-}
-function IconSun() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
-}
-function IconMoon() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-}
-function IconPlus() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-}
-function IconX() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-}
-function IconEdit() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-}
-function IconTrash() {
-  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-}
-function IconLogout() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-}
-function IconBack() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
-}
-function IconBolt() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
-}
-function IconBoard() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-}
-function IconTerminal() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
-}
-function IconSearchLg() {
-  return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+/* ===== Icons ===== */
+const Ico = {
+  Forge: () => <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
+  Search: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>,
+  Sun: () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>,
+  Moon: () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>,
+  Plus: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Edit: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  Trash: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+  Logout: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  Back: () => <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
+  Board: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>,
+  Bolt: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  Terminal: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>,
+  Workspace: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  ChevronDown: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>,
+  ChevronRight: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+  Check: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
 }
 
-/* ========== Landing Page ========== */
-function LandingPage({ onGetStarted, onLogin, theme, toggleTheme }: {
-  onGetStarted: () => void
-  onLogin: () => void
-  theme: string
-  toggleTheme: () => void
-}) {
-  const marqueeItems = [
-    'Real-time Collaboration', 'Kanban Boards', 'WebSocket Events',
-    'Full-text Search', 'CLI Client', 'JWT Authentication',
-    'Activity Logging', 'Optimistic Concurrency', 'PostgreSQL',
-    'Real-time Collaboration', 'Kanban Boards', 'WebSocket Events',
-    'Full-text Search', 'CLI Client', 'JWT Authentication',
-    'Activity Logging', 'Optimistic Concurrency', 'PostgreSQL',
-  ]
+/* ===== Priority Select Component (custom styled like the design image) ===== */
+const PRIORITIES = [
+  { value: 'low', label: 'Low', color: '#4CAF7D' },
+  { value: 'medium', label: 'Medium', color: '#E5A54B' },
+  { value: 'high', label: 'High', color: '#E8735A' },
+  { value: 'urgent', label: 'Urgent', color: '#DC4F45' },
+]
+
+function PrioritySelect({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const current = PRIORITIES.find(p => p.value === value) ?? PRIORITIES[1]!
+
+  useEffect(() => {
+    function close(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
 
   return (
-    <div className="landing">
-      <nav className="landing-nav">
-        <div className="landing-logo">
-          <IconForge />
-          TaskForge
-        </div>
-        <div className="landing-nav-actions">
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          </button>
-          <button className="btn btn-ghost" onClick={onLogin}>Log In</button>
-          <button className="btn btn-primary" onClick={onGetStarted}>Get Started</button>
-        </div>
-      </nav>
-
-      <section className="hero">
-        <div className="hero-content">
-          <div className="hero-badge">
-            <div className="hero-badge-dot" />
-            Open Source Project Management
-          </div>
-          <h1>
-            <span className="gradient-text">Forge</span> Your<br />
-            Productivity
-          </h1>
-          <p>
-            Kanban-style project management with real-time collaboration,
-            full-text search, and a CLI client — all powered by WebSockets
-            and PostgreSQL.
-          </p>
-          <div className="hero-actions">
-            <button className="btn btn-primary btn-lg" onClick={onGetStarted}>
-              Start Forging
+    <div className="custom-select-wrap" ref={ref} id={id}>
+      <button type="button" className="custom-select-trigger" onClick={() => setOpen(o => !o)}>
+        <span className="prio-dot" style={{ background: current.color }} />
+        <span className="custom-select-val">{current.label}</span>
+        <span className="custom-select-arrow"><Ico.ChevronDown /></span>
+      </button>
+      {open && (
+        <div className="custom-select-dropdown">
+          {PRIORITIES.map(p => (
+            <button key={p.value} type="button" className={`custom-select-option ${p.value === value ? 'selected' : ''}`}
+              onClick={() => { onChange(p.value); setOpen(false) }}>
+              <span className="prio-dot" style={{ background: p.color }} />
+              <span className="option-label">{p.label}</span>
+              {p.value === value && <span className="option-check"><Ico.Check /></span>}
             </button>
-            <button className="btn btn-secondary btn-lg" onClick={onLogin}>
-              Log In
-            </button>
-          </div>
-        </div>
-        <div className="hero-visual">
-          <img src={mascotImg} alt="Forge the Manatee mascot" className="hero-mascot" />
-        </div>
-      </section>
-
-      <div className="marquee-strip">
-        <div className="marquee-track">
-          {marqueeItems.map((item, i) => (
-            <div className="marquee-item" key={i}>
-              <span />{item}
-            </div>
           ))}
         </div>
-      </div>
-
-      <section className="features">
-        <div className="features-header">
-          <h2>Built for Modern Teams</h2>
-          <p>Everything you need to manage projects and ship faster.</p>
-        </div>
-        <div className="features-grid">
-          <div className="feature-card">
-            <div className="feature-icon teal"><IconBolt /></div>
-            <h3>Real-time Sync</h3>
-            <p>WebSocket-powered real-time updates. See changes from your team the instant they happen — no refresh needed.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon coral"><IconBoard /></div>
-            <h3>Kanban Boards</h3>
-            <p>Organize tasks into customizable columns. Drag context, set priorities, and track progress visually.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon green"><IconSearchLg /></div>
-            <h3>Full-text Search</h3>
-            <p>PostgreSQL-powered search with Spanish language support. Find any task instantly across all your boards.</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon purple"><IconTerminal /></div>
-            <h3>CLI Client</h3>
-            <p>Manage tasks from the terminal. Login, create, move, and search cards without leaving your workflow.</p>
-          </div>
-        </div>
-      </section>
-
-      <footer className="landing-footer">
-        <p>TaskForge © {new Date().getFullYear()} — Built with Express, React, PostgreSQL & WebSockets</p>
-      </footer>
+      )}
     </div>
   )
 }
 
-/* ========== Auth Page ========== */
-function AuthPage({ onLogin, onBack, theme, toggleTheme }: {
-  onLogin: () => void
-  onBack: () => void
-  theme: string
-  toggleTheme: () => void
-}) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+/* ===== Board Select Component ===== */
+function BoardSelect({ boards, value, onChange }: { boards: Board[]; value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const current = boards.find(b => b.id === value)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-    try {
-      if (mode === 'register') {
-        await register(email, password, name)
-      } else {
-        await login(email, password)
-      }
-      onLogin()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    function close(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+
+  if (boards.length === 0) return null
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <button className="btn btn-ghost auth-back" onClick={onBack} title="Back to home">
-          <IconBack />
-        </button>
-        <div style={{ position: 'absolute', top: 16, right: 16 }}>
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          </button>
+    <div className="custom-select-wrap board-select" ref={ref}>
+      <button type="button" className="custom-select-trigger" onClick={() => setOpen(o => !o)}>
+        <span className="board-icon"><Ico.Board /></span>
+        <span className="custom-select-val">{current?.name ?? 'Select board'}</span>
+        <span className="custom-select-arrow"><Ico.ChevronDown /></span>
+      </button>
+      {open && (
+        <div className="custom-select-dropdown">
+          {boards.map(b => (
+            <button key={b.id} type="button" className={`custom-select-option ${b.id === value ? 'selected' : ''}`}
+              onClick={() => { onChange(b.id); setOpen(false) }}>
+              <span className="board-icon-sm"><Ico.Board /></span>
+              <span className="option-label">{b.name}</span>
+              {b.id === value && <span className="option-check"><Ico.Check /></span>}
+            </button>
+          ))}
         </div>
-        <div className="auth-header">
-          <div className="auth-logo">
-            <IconForge />
-            TaskForge
-          </div>
-          <p>{mode === 'login' ? 'Welcome back! Sign in to continue.' : 'Create your account to get started.'}</p>
+      )}
+    </div>
+  )
+}
+
+/* ===== Modal ===== */
+function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{title}</h3>
+          <button className="modal-close" onClick={onClose}><Ico.X /></button>
         </div>
-
-        <form className="auth-form" onSubmit={handleSubmit}>
-          {mode === 'register' && (
-            <div className="form-group">
-              <label className="label" htmlFor="auth-name">Name</label>
-              <input id="auth-name" className="input" placeholder="Your full name" value={name} onChange={e => setName(e.target.value)} required />
-            </div>
-          )}
-          <div className="form-group">
-            <label className="label" htmlFor="auth-email">Email</label>
-            <input id="auth-email" className="input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
-          </div>
-          <div className="form-group">
-            <label className="label" htmlFor="auth-password">Password</label>
-            <input id="auth-password" className="input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
-          </div>
-
-          {error && <div className="auth-error">{error}</div>}
-
-          <button className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ width: '100%' }}>
-            {loading ? <div className="spinner" /> : mode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
-        </form>
-
-        <div className="auth-switch">
-          {mode === 'login' ? (
-            <>Don't have an account? <button onClick={() => { setMode('register'); setError('') }}>Sign up</button></>
-          ) : (
-            <>Already have an account? <button onClick={() => { setMode('login'); setError('') }}>Sign in</button></>
-          )}
-        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>
   )
 }
 
-/* ========== Card Edit Modal ========== */
-function CardEditModal({ card, onSave, onClose }: {
-  card: Card
-  onSave: (updated: Card) => void
-  onClose: () => void
-}) {
+/* ===== Card Edit Modal ===== */
+function CardEditModal({ card, onSave, onClose }: { card: Card; onSave: (c: Card) => void; onClose: () => void }) {
   const [title, setTitle] = useState(card.title)
   const [description, setDescription] = useState(card.description)
   const [priority, setPriority] = useState(card.priority)
@@ -305,214 +145,264 @@ function CardEditModal({ card, onSave, onClose }: {
 
   async function handleSave() {
     if (!title.trim()) return
-    setLoading(true)
-    setError('')
-    try {
-      const updated = await updateCard(card.id, { title, description, priority }, card.version)
-      onSave(updated)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+    setLoading(true); setError('')
+    try { const updated = await updateCard(card.id, { title, description, priority }, card.version); onSave(updated) }
+    catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Edit Card</h3>
-          <button className="modal-close" onClick={onClose}><IconX /></button>
-        </div>
-        <div className="modal-body">
-          <div className="form-group">
-            <label className="label">Title</label>
-            <input className="input" value={title} onChange={e => setTitle(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="label">Description</label>
-            <textarea className="input" rows={3} style={{ resize: 'vertical', minHeight: 60 }} value={description} onChange={e => setDescription(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label className="label">Priority</label>
-            <select className="select" value={priority} onChange={e => setPriority(e.target.value)}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-          </div>
-          {error && <div className="auth-error">{error}</div>}
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
-            {loading ? <div className="spinner" /> : 'Save Changes'}
-          </button>
-        </div>
+    <Modal title="Edit Card" onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={handleSave} disabled={loading}>
+          {loading ? <div className="spinner" /> : 'Save Changes'}
+        </button>
+      </>
+    }>
+      <div className="form-group">
+        <label className="label">Title</label>
+        <input id="edit-title" className="input" value={title} onChange={e => setTitle(e.target.value)} />
       </div>
-    </div>
+      <div className="form-group">
+        <label className="label">Description</label>
+        <textarea id="edit-desc" className="input" rows={3} style={{ resize: 'vertical' }} value={description} onChange={e => setDescription(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="label">Priority</label>
+        <PrioritySelect id="edit-priority" value={priority} onChange={setPriority} />
+      </div>
+      {error && <div className="auth-error">{error}</div>}
+    </Modal>
   )
 }
 
-/* ========== Add Column Modal ========== */
-function AddColumnModal({ onAdd, onClose, nextColor }: {
-  onAdd: (col: BoardColumn) => void
-  onClose: () => void
-  nextColor: string
-}) {
-  const [listId, setListId] = useState('')
+/* ===== Create List Modal ===== */
+function CreateListModal({ boardId, onCreated, onClose }: { boardId: string; onCreated: (l: BoardList) => void; onClose: () => void }) {
   const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  function handleAdd(e: FormEvent) {
+  async function handle(e: FormEvent) {
     e.preventDefault()
-    if (!listId.trim() || !name.trim()) return
-    onAdd({ listId: listId.trim(), name: name.trim(), color: nextColor })
+    if (!name.trim()) return
+    setLoading(true); setError('')
+    try { const list = await createList(boardId, name.trim()); onCreated(list) }
+    catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Add Column</h3>
-          <button className="modal-close" onClick={onClose}><IconX /></button>
+    <Modal title="New Column" onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary" type="button" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" form="create-list-form" type="submit" disabled={loading}>
+          {loading ? <div className="spinner" /> : 'Create Column'}
+        </button>
+      </>
+    }>
+      <form id="create-list-form" onSubmit={handle}>
+        <div className="form-group">
+          <label className="label">Column Name</label>
+          <input id="list-name" className="input" placeholder='e.g. "Backlog", "In Review"' value={name} onChange={e => setName(e.target.value)} required autoFocus />
         </div>
-        <form onSubmit={handleAdd}>
-          <div className="modal-body">
-            <div className="form-group">
-              <label className="label">Column Name</label>
-              <input className="input" placeholder='e.g. "To Do", "In Progress"' value={name} onChange={e => setName(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label className="label">List ID (UUID)</label>
-              <input className="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value={listId} onChange={e => setListId(e.target.value)} required />
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
-              Paste the UUID of an existing list from your PostgreSQL database.
-            </p>
-          </div>
-          <div className="modal-footer">
-            <button className="btn btn-secondary" type="button" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" type="submit">Add Column</button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {error && <div className="auth-error">{error}</div>}
+      </form>
+    </Modal>
   )
 }
 
-/* ========== Task Card Component ========== */
-function TaskCard({ card, onEdit, onDelete }: {
-  card: Card
-  onEdit: () => void
-  onDelete: () => void
-}) {
+/* ===== Create Board Modal ===== */
+function CreateBoardModal({ workspaceId, onCreated, onClose }: { workspaceId: string; onCreated: (b: Board) => void; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handle(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true); setError('')
+    try { const board = await createBoard(workspaceId, name.trim()); onCreated(board) }
+    catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <Modal title="New Board" onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary" type="button" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" form="create-board-form" type="submit" disabled={loading}>
+          {loading ? <div className="spinner" /> : 'Create Board'}
+        </button>
+      </>
+    }>
+      <form id="create-board-form" onSubmit={handle}>
+        <div className="form-group">
+          <label className="label">Board Name</label>
+          <input id="board-name" className="input" placeholder='e.g. "Marketing Q3", "Sprint 12"' value={name} onChange={e => setName(e.target.value)} required autoFocus />
+        </div>
+        {error && <div className="auth-error">{error}</div>}
+      </form>
+    </Modal>
+  )
+}
+
+/* ===== Create Workspace Modal ===== */
+function CreateWorkspaceModal({ onCreated, onClose }: { onCreated: (w: Workspace) => void; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handle(e: FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true); setError('')
+    try { const ws = await createWorkspace(name.trim()); onCreated(ws) }
+    catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <Modal title="New Workspace" onClose={onClose} footer={
+      <>
+        <button className="btn btn-secondary" type="button" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" form="create-ws-form" type="submit" disabled={loading}>
+          {loading ? <div className="spinner" /> : 'Create Workspace'}
+        </button>
+      </>
+    }>
+      <form id="create-ws-form" onSubmit={handle}>
+        <div className="form-group">
+          <label className="label">Workspace Name</label>
+          <input id="ws-name" className="input" placeholder='e.g. "Company HQ", "Personal Projects"' value={name} onChange={e => setName(e.target.value)} required autoFocus />
+        </div>
+        {error && <div className="auth-error">{error}</div>}
+      </form>
+    </Modal>
+  )
+}
+
+/* ===== Task Card ===== */
+function TaskCard({ card, onEdit, onDelete }: { card: Card; onEdit: () => void; onDelete: () => void }) {
+  const prio = PRIORITIES.find(p => p.value === card.priority)
   return (
     <div className="task-card" onDoubleClick={onEdit}>
-      <div className={`task-card-priority ${card.priority}`} />
-      <div className="task-card-title">{card.title}</div>
-      {card.description && <div className="task-card-desc">{card.description}</div>}
-      <div className="task-card-footer">
-        <span className={`priority-badge ${card.priority}`}>{card.priority}</span>
-        <div className="task-card-actions">
-          <button onClick={e => { e.stopPropagation(); onEdit() }} title="Edit"><IconEdit /></button>
-          <button className="delete-action" onClick={e => { e.stopPropagation(); onDelete() }} title="Delete"><IconTrash /></button>
+      <div className="task-card-priority-bar" style={{ background: prio?.color ?? '#E5A54B' }} />
+      <div className="task-card-body">
+        <div className="task-card-title">{card.title}</div>
+        {card.description && <div className="task-card-desc">{card.description}</div>}
+        <div className="task-card-footer">
+          <span className={`priority-badge ${card.priority}`} style={{ borderColor: prio?.color, color: prio?.color }}>
+            <span className="prio-dot-sm" style={{ background: prio?.color }} />
+            {card.priority}
+          </span>
+          <div className="task-card-actions">
+            <button id={`edit-card-${card.id.slice(0, 8)}`} onClick={e => { e.stopPropagation(); onEdit() }} title="Edit card"><Ico.Edit /></button>
+            <button id={`del-card-${card.id.slice(0, 8)}`} className="delete-action" onClick={e => { e.stopPropagation(); onDelete() }} title="Delete card"><Ico.Trash /></button>
+          </div>
         </div>
       </div>
-      <div className="task-card-id">{card.id.slice(0, 8)}</div>
     </div>
   )
 }
 
-/* ========== Kanban Column ========== */
-function KanbanColumn({ column, onRemove }: {
-  column: BoardColumn
-  onRemove: () => void
-}) {
+/* ===== Kanban Column ===== */
+function KanbanColumn({ list, colorIdx, onDeleted, wsEvent }: { list: BoardList; colorIdx: number; onDeleted: () => void; wsEvent: any }) {
   const [cards, setCards] = useState<Card[]>([])
   const [addingCard, setAddingCard] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [newPriority, setNewPriority] = useState('medium')
   const [editingCard, setEditingCard] = useState<Card | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameVal, setRenameVal] = useState(list.name)
+  const [loading, setLoading] = useState(true)
+  const color = COLUMN_COLORS[colorIdx % COLUMN_COLORS.length]!
 
   const loadCards = useCallback(async () => {
-    try {
-      const data = await getCards(column.listId)
-      setCards(data)
-    } catch { /* column might not exist yet */ }
-  }, [column.listId])
+    setLoading(true)
+    try { const data = await getCards(list.id); setCards(data) }
+    catch { }
+    finally { setLoading(false) }
+  }, [list.id])
 
   useEffect(() => { loadCards() }, [loadCards])
+
+  // React to real-time websocket events
+  useEffect(() => {
+    if (!wsEvent) return
+    if (wsEvent.type === 'card.created' && wsEvent.payload.listId === list.id) {
+      setCards(prev => prev.some(c => c.id === wsEvent.payload.id) ? prev : [...prev, wsEvent.payload])
+    } else if (wsEvent.type === 'card.updated') {
+      setCards(prev => prev.map(c => c.id === wsEvent.payload.id ? wsEvent.payload : c))
+    } else if (wsEvent.type === 'card.deleted') {
+      setCards(prev => prev.filter(c => c.id !== wsEvent.payload.id))
+    }
+  }, [wsEvent, list.id])
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault()
     if (!newTitle.trim()) return
     try {
-      const card = await createCard(column.listId, newTitle.trim(), '', newPriority)
+      const card = await createCard(list.id, newTitle.trim(), '', newPriority)
       setCards(prev => [...prev, card])
-      setNewTitle('')
-      setAddingCard(false)
+      setNewTitle(''); setAddingCard(false)
     } catch { }
   }
 
   async function handleDelete(cardId: string) {
-    try {
-      await deleteCard(cardId)
-      setCards(prev => prev.filter(c => c.id !== cardId))
-    } catch { }
+    try { await deleteCard(cardId); setCards(prev => prev.filter(c => c.id !== cardId)) } catch { }
   }
 
-  function handleCardSaved(updated: Card) {
-    setCards(prev => prev.map(c => c.id === updated.id ? updated : c))
-    setEditingCard(null)
+  async function handleRename() {
+    if (!renameVal.trim() || renameVal === list.name) { setIsRenaming(false); return }
+    try { await updateList(list.id, renameVal.trim()); list.name = renameVal.trim(); setIsRenaming(false) } catch { }
+  }
+
+  async function handleDeleteList() {
+    if (!window.confirm(`Delete column "${list.name}" and all its cards?`)) return
+    try { await deleteList(list.id); onDeleted() } catch { }
   }
 
   return (
     <>
       <div className="kanban-col">
         <div className="col-header">
-          <div className="col-color-dot" style={{ background: column.color }} />
-          <h3>{column.name}</h3>
+          <div className="col-color-dot" style={{ background: color }} />
+          {isRenaming ? (
+            <input className="col-rename-input" value={renameVal} autoFocus
+              onChange={e => setRenameVal(e.target.value)}
+              onBlur={handleRename}
+              onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setIsRenaming(false) }}
+            />
+          ) : (
+            <h3 onDoubleClick={() => setIsRenaming(true)} title="Double-click to rename">{list.name}</h3>
+          )}
           <span className="col-count">{cards.length}</span>
-          <button className="col-remove" onClick={onRemove} title="Remove column"><IconX /></button>
+          <div className="col-actions">
+            <button className="col-action-btn" onClick={() => setIsRenaming(true)} title="Rename"><Ico.Edit /></button>
+            <button className="col-action-btn danger" onClick={handleDeleteList} title="Delete column"><Ico.Trash /></button>
+          </div>
         </div>
 
         <div className="col-cards">
-          {cards.map(card => (
-            <TaskCard
-              key={card.id}
-              card={card}
-              onEdit={() => setEditingCard(card)}
-              onDelete={() => handleDelete(card.id)}
-            />
+          {loading && <div className="col-loading"><div className="spinner" /></div>}
+          {!loading && cards.map(card => (
+            <TaskCard key={card.id} card={card} onEdit={() => setEditingCard(card)} onDelete={() => handleDelete(card.id)} />
           ))}
         </div>
 
         <div className="add-card-form">
           {!addingCard ? (
-            <button className="add-card-trigger" onClick={() => setAddingCard(true)}>
-              <IconPlus /> Add a card
+            <button id={`add-card-${list.id.slice(0, 8)}`} className="add-card-trigger" onClick={() => setAddingCard(true)}>
+              <Ico.Plus /> Add a card
             </button>
           ) : (
             <form className="add-card-expanded" onSubmit={handleCreate}>
-              <input
-                className="input"
-                placeholder="Card title..."
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                autoFocus
-              />
+              <input className="input" placeholder="Card title..." value={newTitle} onChange={e => setNewTitle(e.target.value)} autoFocus />
               <div className="add-card-row">
-                <select className="select" value={newPriority} onChange={e => setNewPriority(e.target.value)}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                <PrioritySelect value={newPriority} onChange={setNewPriority} />
                 <button className="btn btn-primary btn-sm" type="submit">Add</button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setAddingCard(false)}>
-                  <IconX />
-                </button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setAddingCard(false)}><Ico.X /></button>
               </div>
             </form>
           )}
@@ -522,7 +412,7 @@ function KanbanColumn({ column, onRemove }: {
       {editingCard && (
         <CardEditModal
           card={editingCard}
-          onSave={handleCardSaved}
+          onSave={updated => { setCards(prev => prev.map(c => c.id === updated.id ? updated : c)); setEditingCard(null) }}
           onClose={() => setEditingCard(null)}
         />
       )}
@@ -530,243 +420,423 @@ function KanbanColumn({ column, onRemove }: {
   )
 }
 
-/* ========== Dashboard ========== */
-function Dashboard({ onLogout, theme, toggleTheme }: {
-  onLogout: () => void
-  theme: string
-  toggleTheme: () => void
+/* ===== Sidebar ===== */
+function Sidebar({ workspaces, boards, activeWorkspaceId, activeBoardId, onSelectWorkspace, onSelectBoard, onNewWorkspace, onNewBoard, collapsed, onToggle }: {
+  workspaces: Workspace[]; boards: Board[]; activeWorkspaceId: string; activeBoardId: string;
+  onSelectWorkspace: (id: string) => void; onSelectBoard: (id: string) => void;
+  onNewWorkspace: () => void; onNewBoard: () => void; collapsed: boolean; onToggle: () => void;
 }) {
-  const [columns, setColumns] = useState<BoardColumn[]>(loadColumns)
-  const [showAddCol, setShowAddCol] = useState(false)
+  const [expandedWs, setExpandedWs] = useState<Set<string>>(new Set([activeWorkspaceId]))
+
+  useEffect(() => {
+    setExpandedWs(prev => new Set([...prev, activeWorkspaceId]))
+  }, [activeWorkspaceId])
+
+  return (
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        {!collapsed && <div className="sidebar-brand"><Ico.Forge /><span>TaskForge</span></div>}
+        <button className="sidebar-toggle" onClick={onToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {collapsed ? <Ico.ChevronRight /> : <Ico.ChevronDown />}
+        </button>
+      </div>
+
+      {!collapsed && (
+        <nav className="sidebar-nav">
+          <div className="sidebar-section-header">
+            <span>Workspaces</span>
+            <button id="new-workspace-btn" className="sidebar-add-btn" onClick={onNewWorkspace} title="New workspace"><Ico.Plus /></button>
+          </div>
+          {workspaces.length === 0 && (
+            <div className="sidebar-empty">No workspaces yet</div>
+          )}
+          {workspaces.map(ws => {
+            const isExpanded = expandedWs.has(ws.id)
+            const wsBoards = boards.filter(b => b.workspaceId === ws.id)
+            return (
+              <div key={ws.id} className={`sidebar-ws ${ws.id === activeWorkspaceId ? 'active' : ''}`}>
+                <button className="sidebar-ws-btn" onClick={() => {
+                  onSelectWorkspace(ws.id)
+                  setExpandedWs(prev => {
+                    const n = new Set(prev)
+                    if (n.has(ws.id)) n.delete(ws.id); else n.add(ws.id)
+                    return n
+                  })
+                }}>
+                  <span className="ws-icon"><Ico.Workspace /></span>
+                  <span className="ws-name">{ws.name}</span>
+                  {isExpanded ? <Ico.ChevronDown /> : <Ico.ChevronRight />}
+                </button>
+                {isExpanded && (
+                  <div className="sidebar-boards">
+                    {wsBoards.map(b => (
+                      <button key={b.id} id={`board-${b.id.slice(0, 8)}`} className={`sidebar-board-btn ${b.id === activeBoardId ? 'active' : ''}`} onClick={() => onSelectBoard(b.id)}>
+                        <span className="board-dot" />
+                        {b.name}
+                      </button>
+                    ))}
+                    <button id={`add-board-${ws.id.slice(0, 8)}`} className="sidebar-new-board" onClick={onNewBoard}>
+                      <Ico.Plus /><span>New board</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </nav>
+      )}
+    </aside>
+  )
+}
+
+/* ===== Dashboard ===== */
+function Dashboard({ onLogout, theme, toggleTheme }: { onLogout: () => void; theme: string; toggleTheme: () => void }) {
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [boards, setBoards] = useState<Board[]>([])
+  const [lists, setLists] = useState<BoardList[]>([])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState('')
+  const [activeBoardId, setActiveBoardId] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Card[] | null>(null)
   const [wsConnected, setWsConnected] = useState(false)
+  const [wsEvent, setWsEvent] = useState<any>(null)
+  const [showCreateWs, setShowCreateWs] = useState(false)
+  const [showCreateBoard, setShowCreateBoard] = useState(false)
+  const [showCreateList, setShowCreateList] = useState(false)
+  const [loadingLists, setLoadingLists] = useState(false)
   const searchTimeoutRef = useRef<any>(null)
 
-  /* Save columns to localStorage */
-  useEffect(() => { saveColumns(columns) }, [columns])
+  // Load workspaces + their boards on mount
+  useEffect(() => {
+    async function init() {
+      try {
+        const ws = await getWorkspaces()
+        setWorkspaces(ws)
+        if (ws.length > 0) {
+          const firstWs = ws[0]!
+          setActiveWorkspaceId(firstWs.id)
+          const bds = await getBoards(firstWs.id)
+          setBoards(bds)
+          if (bds.length > 0) {
+            setActiveBoardId(bds[0]!.id)
+          }
+        }
+      } catch { }
+    }
+    init()
+  }, [])
 
-  /* WebSocket */
+  // Load lists when board changes
+  useEffect(() => {
+    if (!activeBoardId) { setLists([]); return }
+    setLoadingLists(true)
+    getLists(activeBoardId).then(l => setLists(l)).catch(() => setLists([])).finally(() => setLoadingLists(false))
+  }, [activeBoardId])
+
+  // WebSocket
   useEffect(() => {
     const token = getToken()
     if (!token) return
-
-    let ws: WebSocket
-    let reconnectTimer: ReturnType<typeof setTimeout>
-
+    let ws: WebSocket; let reconnectTimer: any
     function connect() {
       ws = new WebSocket(`ws://localhost:3000/ws?token=${token}`)
       ws.onopen = () => setWsConnected(true)
-      ws.onclose = () => {
-        setWsConnected(false)
-        reconnectTimer = setTimeout(connect, 5000)
-      }
+      ws.onmessage = (e) => { try { setWsEvent(JSON.parse(e.data) ) } catch { } }
+      ws.onclose = () => { setWsConnected(false); reconnectTimer = setTimeout(connect, 5000) }
       ws.onerror = () => ws.close()
     }
-
     connect()
-    return () => {
-      clearTimeout(reconnectTimer)
-      ws?.close()
-    }
+    return () => { clearTimeout(reconnectTimer); ws?.close() }
   }, [])
 
-  function addColumn(col: BoardColumn) {
-    setColumns(prev => [...prev, col])
-    setShowAddCol(false)
+  async function handleSelectWorkspace(id: string) {
+    setActiveWorkspaceId(id)
+    try {
+      const bds = await getBoards(id)
+      // Merge boards (avoid duplicates from other workspaces)
+      setBoards(prev => [...prev.filter(b => b.workspaceId !== id), ...bds])
+      if (bds.length > 0) setActiveBoardId(bds[0]!.id)
+      else setActiveBoardId('')
+    } catch { }
   }
 
-  function removeColumn(idx: number) {
-    setColumns(prev => prev.filter((_, i) => i !== idx))
+  function handleSelectBoard(id: string) {
+    setActiveBoardId(id)
   }
 
-  function handleSearchChange(value: string) {
-    setSearchQuery(value)
+  function handleSearchChange(val: string) {
+    setSearchQuery(val)
     clearTimeout(searchTimeoutRef.current)
-    if (!value.trim()) {
-      setSearchResults(null)
-      return
-    }
+    if (!val.trim()) { setSearchResults(null); return }
     searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const results = await searchCards(value.trim())
-        setSearchResults(results)
-      } catch {
-        setSearchResults([])
-      }
+      try { setSearchResults(await searchCards(val.trim())) } catch { setSearchResults([]) }
     }, 400)
   }
 
-  function clearSearch() {
-    setSearchQuery('')
-    setSearchResults(null)
-  }
-
-  const nextColor = COLUMN_COLORS[columns.length % COLUMN_COLORS.length]
+  const activeBoard = boards.find(b => b.id === activeBoardId)
+  const activeWsBoards = boards.filter(b => b.workspaceId === activeWorkspaceId)
 
   return (
-    <div className="dashboard">
-      {/* Header */}
-      <header className="dash-header">
-        <div className="dash-logo">
-          <IconForge />
-          TaskForge
-        </div>
+    <div className="app-layout">
+      <Sidebar
+        workspaces={workspaces}
+        boards={boards}
+        activeWorkspaceId={activeWorkspaceId}
+        activeBoardId={activeBoardId}
+        onSelectWorkspace={handleSelectWorkspace}
+        onSelectBoard={handleSelectBoard}
+        onNewWorkspace={() => setShowCreateWs(true)}
+        onNewBoard={() => setShowCreateBoard(true)}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(o => !o)}
+      />
 
-        <div className="dash-search">
-          <span className="dash-search-icon"><IconSearch /></span>
-          <input
-            className="input"
-            placeholder="Search cards..."
-            value={searchQuery}
-            onChange={e => handleSearchChange(e.target.value)}
-          />
-        </div>
-
-        <div className="dash-header-actions">
-          <div className="ws-indicator">
-            <div className={`ws-dot ${wsConnected ? 'connected' : ''}`} />
-            {wsConnected ? 'Live' : 'Offline'}
-          </div>
-          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
-            {theme === 'dark' ? <IconSun /> : <IconMoon />}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { apiLogout(); onLogout() }}>
-            <IconLogout /> Logout
-          </button>
-        </div>
-      </header>
-
-      {/* Search Results */}
-      {searchResults && (
-        <>
-          <div className="search-results-overlay" onClick={clearSearch} />
-          <div className="search-results-panel">
-            <div className="search-results-header">
-              <span>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</span>
-              <button className="btn btn-ghost btn-sm" onClick={clearSearch}><IconX /> Close</button>
+      <div className="main-content">
+        {/* Topbar */}
+        <header className="dash-header">
+          <div className="dash-header-left">
+            {sidebarCollapsed && <div className="dash-logo-mini"><Ico.Forge /></div>}
+            <div className="dash-breadcrumb">
+              {workspaces.find(w => w.id === activeWorkspaceId)?.name}
+              {activeBoard && <><span className="breadcrumb-sep">/</span>{activeBoard.name}</>}
             </div>
-            {searchResults.length === 0 && (
-              <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>
-                No cards found for "{searchQuery}"
-              </div>
+            {activeBoard && activeWsBoards.length > 1 && (
+              <BoardSelect
+                boards={activeWsBoards}
+                value={activeBoardId}
+                onChange={handleSelectBoard}
+              />
             )}
-            {searchResults.map(card => (
-              <div key={card.id} className="search-result-card">
-                <h4>{card.title}</h4>
-                <p>
-                  <span className={`priority-badge ${card.priority}`} style={{ marginRight: 8 }}>{card.priority}</span>
-                  {card.description || 'No description'}
-                </p>
-              </div>
-            ))}
           </div>
-        </>
-      )}
-
-      {/* Board */}
-      <div className="kanban-wrapper">
-        <div className="kanban-toolbar">
-          <h2>Board</h2>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowAddCol(true)}>
-            <IconPlus /> Add Column
-          </button>
-        </div>
-
-        {columns.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <IconBoard />
+          <div className="dash-search">
+            <span className="dash-search-icon"><Ico.Search /></span>
+            <input id="global-search" className="input" placeholder="Search cards..." value={searchQuery} onChange={e => handleSearchChange(e.target.value)} />
+          </div>
+          <div className="dash-header-actions">
+            <div className="ws-indicator">
+              <div className={`ws-dot ${wsConnected ? 'connected' : ''}`} />
+              <span>{wsConnected ? 'Live' : 'Offline'}</span>
             </div>
-            <h3>No columns yet</h3>
-            <p>
-              Add your first column by providing a List ID from your database to start organizing your tasks.
-            </p>
-            <button className="btn btn-primary" onClick={() => setShowAddCol(true)}>
-              <IconPlus /> Add Your First Column
+            <button className="theme-toggle" id="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme">
+              {theme === 'dark' ? <Ico.Sun /> : <Ico.Moon />}
+            </button>
+            <button id="logout-btn" className="btn btn-ghost btn-sm" onClick={() => { apiLogout(); onLogout() }}>
+              <Ico.Logout /> Logout
             </button>
           </div>
-        ) : (
-          <div className="kanban-board">
-            {columns.map((col, idx) => (
-              <KanbanColumn
-                key={col.listId}
-                column={col}
-                onRemove={() => removeColumn(idx)}
-              />
-            ))}
-            <div className="add-col-card" onClick={() => setShowAddCol(true)}>
-              <IconPlus />
-              Add Column
+        </header>
+
+        {/* Search Results Overlay */}
+        {searchResults && (
+          <>
+            <div className="search-results-overlay" onClick={() => { setSearchQuery(''); setSearchResults(null) }} />
+            <div className="search-results-panel">
+              <div className="search-results-header">
+                <span>{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</span>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setSearchQuery(''); setSearchResults(null) }}><Ico.X /> Close</button>
+              </div>
+              {searchResults.length === 0 && <div className="search-empty">No cards found for "{searchQuery}"</div>}
+              {searchResults.map(card => {
+                const prio = PRIORITIES.find(p => p.value === card.priority)
+                return (
+                  <div key={card.id} className="search-result-card">
+                    <div className="search-card-prio" style={{ background: prio?.color }} />
+                    <div>
+                      <h4>{card.title}</h4>
+                      <p>{card.description || 'No description'}</p>
+                    </div>
+                    <span className={`priority-badge ${card.priority}`}>{card.priority}</span>
+                  </div>
+                )
+              })}
             </div>
-          </div>
+          </>
         )}
+
+        {/* Board Area */}
+        <div className="kanban-wrapper">
+          {!activeBoardId ? (
+            <div className="empty-state">
+              <div className="empty-state-icon"><Ico.Board /></div>
+              <h3>No board selected</h3>
+              <p>Create a workspace and board to start organizing your tasks.</p>
+              <button id="create-ws-cta" className="btn btn-primary" onClick={() => setShowCreateWs(true)}>
+                <Ico.Plus /> Create Workspace
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="kanban-toolbar">
+                <h2>{activeBoard?.name ?? 'Board'}</h2>
+                <button id="add-column-btn" className="btn btn-primary btn-sm" onClick={() => setShowCreateList(true)}>
+                  <Ico.Plus /> Add Column
+                </button>
+              </div>
+              {loadingLists ? (
+                <div className="board-loading"><div className="spinner" /></div>
+              ) : lists.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon"><Ico.Board /></div>
+                  <h3>No columns yet</h3>
+                  <p>Add your first column to start organizing cards.</p>
+                  <button className="btn btn-primary" onClick={() => setShowCreateList(true)}><Ico.Plus /> Add Column</button>
+                </div>
+              ) : (
+                <div className="kanban-board">
+                  {lists.map((list, idx) => (
+                    <KanbanColumn
+                      key={list.id}
+                      list={list}
+                      colorIdx={idx}
+                      wsEvent={wsEvent}
+                      onDeleted={() => setLists(prev => prev.filter(l => l.id !== list.id))}
+                    />
+                  ))}
+                  <div className="add-col-card" onClick={() => setShowCreateList(true)}>
+                    <Ico.Plus /> Add Column
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Add Column Modal */}
-      {showAddCol && (
-        <AddColumnModal
-          onAdd={addColumn}
-          onClose={() => setShowAddCol(false)}
-          nextColor={nextColor}
+      {/* Modals */}
+      {showCreateWs && (
+        <CreateWorkspaceModal
+          onCreated={ws => { setWorkspaces(prev => [...prev, ws]); setActiveWorkspaceId(ws.id); setShowCreateWs(false) }}
+          onClose={() => setShowCreateWs(false)}
+        />
+      )}
+      {showCreateBoard && activeWorkspaceId && (
+        <CreateBoardModal
+          workspaceId={activeWorkspaceId}
+          onCreated={board => { setBoards(prev => [...prev, board]); setActiveBoardId(board.id); setShowCreateBoard(false) }}
+          onClose={() => setShowCreateBoard(false)}
+        />
+      )}
+      {showCreateList && activeBoardId && (
+        <CreateListModal
+          boardId={activeBoardId}
+          onCreated={list => { setLists(prev => [...prev, list]); setShowCreateList(false) }}
+          onClose={() => setShowCreateList(false)}
         />
       )}
     </div>
   )
 }
 
-/* ========== App Root ========== */
+/* ===== Landing Page ===== */
+function LandingPage({ onGetStarted, onLogin, theme, toggleTheme }: { onGetStarted: () => void; onLogin: () => void; theme: string; toggleTheme: () => void }) {
+  const marqueeItems = ['Real-time Collaboration','Kanban Boards','WebSocket Events','Full-text Search','CLI Client','JWT Authentication','Activity Logging','PostgreSQL','Dynamic Workspaces','Real-time Collaboration','Kanban Boards','WebSocket Events','Full-text Search','CLI Client','JWT Authentication','Activity Logging','PostgreSQL','Dynamic Workspaces']
+  return (
+    <div className="landing">
+      <nav className="landing-nav">
+        <div className="landing-logo"><Ico.Forge />TaskForge</div>
+        <div className="landing-nav-actions">
+          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">{theme === 'dark' ? <Ico.Sun /> : <Ico.Moon />}</button>
+          <button className="btn btn-ghost" onClick={onLogin}>Log In</button>
+          <button className="btn btn-primary" onClick={onGetStarted}>Get Started</button>
+        </div>
+      </nav>
+      <section className="hero">
+        <div className="hero-content">
+          <div className="hero-badge"><div className="hero-badge-dot" />Open Source Project Management</div>
+          <h1><span className="gradient-text">Forge</span> Your<br />Productivity</h1>
+          <p>Kanban-style project management with dynamic workspaces, real-time WebSocket sync, full-text search, and a CLI client — all powered by PostgreSQL.</p>
+          <div className="hero-actions">
+            <button className="btn btn-primary btn-lg" onClick={onGetStarted}>Start Forging</button>
+            <button className="btn btn-secondary btn-lg" onClick={onLogin}>Log In</button>
+          </div>
+        </div>
+        <div className="hero-visual">
+          <img src={mascotImg} alt="Forge the Manatee" className="hero-mascot" />
+        </div>
+      </section>
+      <div className="marquee-strip">
+        <div className="marquee-track">
+          {marqueeItems.map((item, i) => (<div className="marquee-item" key={i}><span />{item}</div>))}
+        </div>
+      </div>
+      <section className="features">
+        <div className="features-header"><h2>Built for Modern Teams</h2><p>Everything you need to manage projects and ship faster.</p></div>
+        <div className="features-grid">
+          <div className="feature-card"><div className="feature-icon teal"><Ico.Bolt /></div><h3>Real-time Sync</h3><p>WebSocket-powered updates. See changes instantly — no refresh needed.</p></div>
+          <div className="feature-card"><div className="feature-icon coral"><Ico.Board /></div><h3>Dynamic Kanban</h3><p>Create workspaces, boards and columns on the fly. Organize tasks visually.</p></div>
+          <div className="feature-card"><div className="feature-icon green"><Ico.Search /></div><h3>Full-text Search</h3><p>PostgreSQL-powered search. Find any task instantly across all your boards.</p></div>
+          <div className="feature-card"><div className="feature-icon purple"><Ico.Terminal /></div><h3>CLI Client</h3><p>Manage tasks from the terminal. Create, move and search cards without leaving your workflow.</p></div>
+        </div>
+      </section>
+      <footer className="landing-footer"><p>TaskForge © {new Date().getFullYear()} — Built with Express, React, PostgreSQL & WebSockets</p></footer>
+    </div>
+  )
+}
+
+/* ===== Auth Page ===== */
+function AuthPage({ onLogin, onBack, theme, toggleTheme }: { onLogin: () => void; onBack: () => void; theme: string; toggleTheme: () => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [name, setName] = useState('')
+  const [error, setError] = useState(''); const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault(); setError(''); setLoading(true)
+    try { mode === 'register' ? await register(email, password, name) : await login(email, password); onLogin() }
+    catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <button className="btn btn-ghost auth-back" onClick={onBack}><Ico.Back /></button>
+        <div style={{ position: 'absolute', top: 16, right: 16 }}>
+          <button className="theme-toggle" onClick={toggleTheme}>{theme === 'dark' ? <Ico.Sun /> : <Ico.Moon />}</button>
+        </div>
+        <div className="auth-header">
+          <div className="auth-logo"><Ico.Forge />TaskForge</div>
+          <p>{mode === 'login' ? 'Welcome back! Sign in to continue.' : 'Create your account to get started.'}</p>
+        </div>
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {mode === 'register' && (
+            <div className="form-group"><label className="label" htmlFor="auth-name">Name</label>
+              <input id="auth-name" className="input" placeholder="Your full name" value={name} onChange={e => setName(e.target.value)} required /></div>
+          )}
+          <div className="form-group"><label className="label" htmlFor="auth-email">Email</label>
+            <input id="auth-email" className="input" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required /></div>
+          <div className="form-group"><label className="label" htmlFor="auth-password">Password</label>
+            <input id="auth-password" className="input" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required /></div>
+          {error && <div className="auth-error">{error}</div>}
+          <button id="auth-submit-btn" className="btn btn-primary btn-lg" type="submit" disabled={loading} style={{ width: '100%' }}>
+            {loading ? <div className="spinner" /> : mode === 'login' ? 'Sign In' : 'Create Account'}
+          </button>
+        </form>
+        <div className="auth-switch">
+          {mode === 'login' ? (<>Don't have an account? <button onClick={() => { setMode('register'); setError('') }}>Sign up</button></>) : (<>Already have an account? <button onClick={() => { setMode('login'); setError('') }}>Sign in</button></>)}
+        </div>
+        <div className="auth-demo">
+          <p>Demo credentials:</p>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setEmail('demo@taskforge.com'); setPassword('password123'); setMode('login') }}>Use demo account</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ===== App Root ===== */
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(!!getToken())
   const [view, setView] = useState<AppView>(loggedIn ? 'dashboard' : 'landing')
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'light')
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem(THEME_KEY, theme)
-  }, [theme])
+  useEffect(() => { document.documentElement.setAttribute('data-theme', theme); localStorage.setItem(THEME_KEY, theme) }, [theme])
 
-  function toggleTheme() {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light')
-  }
+  function toggleTheme() { setTheme(p => p === 'light' ? 'dark' : 'light') }
+  function handleLogin() { setLoggedIn(true); setView('dashboard') }
+  function handleLogout() { setLoggedIn(false); setView('landing') }
 
-  function handleLogin() {
-    setLoggedIn(true)
-    setView('dashboard')
-  }
-
-  function handleLogout() {
-    setLoggedIn(false)
-    setView('landing')
-  }
-
-  if (view === 'landing') {
-    return (
-      <LandingPage
-        onGetStarted={() => setView('auth')}
-        onLogin={() => setView('auth')}
-        theme={theme}
-        toggleTheme={toggleTheme}
-      />
-    )
-  }
-
-  if (view === 'auth' || !loggedIn) {
-    return (
-      <AuthPage
-        onLogin={handleLogin}
-        onBack={() => setView('landing')}
-        theme={theme}
-        toggleTheme={toggleTheme}
-      />
-    )
-  }
-
-  return (
-    <Dashboard
-      onLogout={handleLogout}
-      theme={theme}
-      toggleTheme={toggleTheme}
-    />
-  )
+  if (view === 'landing') return <LandingPage onGetStarted={() => setView('auth')} onLogin={() => setView('auth')} theme={theme} toggleTheme={toggleTheme} />
+  if (view === 'auth' || !loggedIn) return <AuthPage onLogin={handleLogin} onBack={() => setView('landing')} theme={theme} toggleTheme={toggleTheme} />
+  return <Dashboard onLogout={handleLogout} theme={theme} toggleTheme={toggleTheme} />
 }
